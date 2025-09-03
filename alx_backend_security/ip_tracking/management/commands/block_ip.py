@@ -1,5 +1,3 @@
-# ip_tracking/management/commands/block_ip.py
-
 from django.core.management.base import BaseCommand, CommandError
 from django.core.exceptions import ValidationError
 from ip_tracking.models import BlockedIP
@@ -9,80 +7,71 @@ class Command(BaseCommand):
     """
     Django management command to block/unblock IP addresses.
     
-    Usage examples:
-    python manage.py block_ip --add 192.168.1.100 --reason "Brute force attack"
-    python manage.py block_ip --remove 192.168.1.100
-    python manage.py block_ip --list
-    python manage.py block_ip --add 203.45.67.89 --reason "Spam bot"
+    Usage:
+        python3 manage.py block_ip --add 192.168.1.100 --reason "Brute force attack"
+        python3 manage.py block_ip --remove 192.168.1.100
+        python3 manage.py block_ip --list
+        python3 manage.py block_ip --add 203.45.67.89 --reason "Spam bot"
+        
     """
+    help = 'Manage blocked IPs'
     
-    help = 'Manage blocked IP addresses'
-    
-    def add_arguments(self, parser):
-        """
-        Define command line arguments this command accepts.
+    def add_arguments(self,parser):
+        """ 
+        Define command line arguments this command accepts
         
-        Django's argument parser is based on Python's argparse module.
-        We create mutually exclusive groups so user can't accidentally
-        try to add and remove the same IP in one command.
         """
-        
         # Create mutually exclusive group - user can only choose one action
         group = parser.add_mutually_exclusive_group(required=True)
         
-        # Add IP to blocklist
+        # add IP to blocklist
         group.add_argument(
             '--add',
             type=str,
             help='IP address to block (e.g., 192.168.1.100 or 2001:db8::1)'
         )
-        
-        # Remove IP from blocklist
+        # remove IP from blocklist
         group.add_argument(
             '--remove',
             type=str,
-            help='IP address to unblock'
+            help='IP to unblock'
         )
-        
-        # List all blocked IPs
+        # list all blocked IPs
         group.add_argument(
             '--list',
             action='store_true',
-            help='List all currently blocked IP addresses'
+            help='list all currently blocked IPs'
         )
-        
-        # Optional reason for blocking (only used with --add)
+        # reason for blocking,should be used when --add is used
         parser.add_argument(
             '--reason',
             type=str,
             default='',
-            help='Reason for blocking this IP (optional)'
+            help='reason for blocking this IP'
         )
     
-    def validate_ip_address(self, ip_string):
+    def validate_ip_address(self,ip_string):
         """
-        Validate that provided string is a valid IPv4 or IPv6 address.
+        Using Python's ipaddress module for robust validation,
+        This catches malformed IPs before they hit the database
         
-        Using Python's ipaddress module for robust validation.
-        This catches malformed IPs before they hit the database.
         """
         try:
-            # This will raise ValueError if IP is invalid
+            # this raises value error if IP is invalid
             ipaddress.ip_address(ip_string)
             return True
         except ValueError:
             return False
     
-    def handle(self, *args, **options):
+    def handle(self,*args,**options):
         """
         Main command logic. Called when user runs the management command.
         
         Django calls this method with parsed command line arguments
         in the 'options' dictionary.
-        """
         
+        """
         if options['add']:
-            # Block a new IP address
             ip_to_block = options['add'].strip()
             reason = options['reason']
             
@@ -97,23 +86,20 @@ class Command(BaseCommand):
                 )
                 return
             
-            # Create new blocked IP entry
+            # create new blocked IP entry
             try:
                 blocked_ip = BlockedIP.objects.create(
                     ip_address=ip_to_block,
                     reason=reason
                 )
-                
                 self.stdout.write(
                     self.style.SUCCESS(
                         f'Successfully blocked IP: {ip_to_block}'
                         + (f' (Reason: {reason})' if reason else '')
                     )
                 )
-                
             except ValidationError as e:
                 raise CommandError(f'Database validation error: {e}')
-        
         elif options['remove']:
             # Unblock an IP address
             ip_to_unblock = options['remove'].strip()
@@ -155,6 +141,3 @@ class Command(BaseCommand):
                 self.stdout.write(
                     f'{blocked_ip.ip_address:15} | {blocked_time}{reason_text}'
                 )
-        
-        # Note: If none of the conditions match, argparse handles the error
-        # because we set required=True on the mutually exclusive group
