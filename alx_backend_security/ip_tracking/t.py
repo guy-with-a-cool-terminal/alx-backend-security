@@ -1,114 +1,113 @@
-# ip_tracking/models.py
+# ip_tracking/middleware.py
 
-from django.db import models
-from django.utils import timezone
+from django.http import HttpResponseForbidden
+from django.utils.deprecation import MiddlewareMixin
+from .models import RequestLog, BlockedIP
 
-class RequestLog(models.Model):
+class IPTrackingMiddleware(MiddlewareMixin):
     """
-    Stores every HTTP request made to our Django application.
-    Used for security monitoring, analytics, and debugging.
+    Middleware that runs for every HTTP request to:
+    1. Extract the real client IP address
+    2. Check if IP is blocked and reject request if so
+    3. Log all request details to database
+    
+    Middleware executes in order defined in settings.py MIDDLEWARE list.
+    This should run early to catch and block requests before expensive processing.
     """
-    # GenericIPAddressField automatically validates IPv4/IPv6 format
-    # Stores IP as efficient database format (not just text)
-    ip_address = models.GenericIPAddressField(
-        help_text="Client IP address (IPv4 or IPv6)"
-    )
     
-    # DateTimeField with timezone awareness
-    # default=timezone.now sets current time if not specified
-    timestamp = models.DateTimeField(
-        default=timezone.now,
-        help_text="When the request was made"
-    )
-    
-    # CharField for URL path like '/admin', '/login', '/api/users'
-    # max_length=500 handles most realistic URL lengths
-    path = models.CharField(
-        max_length=500,
-        help_text="URL path that was requested"
-    )
-    
-    class Meta:
-        # Show newest requests first in admin and queries
-        ordering = ['-timestamp']
+    def get_client_ip(self, request):
+        """
+        Extract real client IP address handling proxy/load balancer scenarios.
         
-        # Database indexes for fast queries
-        # Without indexes, queries scan entire table (slow)
-        # With indexes, database jumps to specific records (fast)
-        indexes = [
-            # Fast lookups like "show all requests from this IP"
-            models.Index(fields=['ip_address'], name='idx_request_ip'),
-            # Fast lookups like "show requests from last hour"
-            models.Index(fields=['timestamp'], name='idx_request_time'),
-            # Fast lookups combining both fields for anomaly detection
-            models.Index(fields=['ip_address', 'timestamp'], name='idx_ip_time'),
-        ]
+        Order of preference based on reliability:
+        1. X-Forwarded-For header (most common proxy header)
+        2. X-Real-IP header (nginx sets this)
+        3. HTTP_X_FORWARDED_FOR (Django's processed version)
+        4. REMOTE_ADDR (direct connection IP - could be proxy)
+        """
         
-        # Human-readable names in Django admin
-        verbose_name = "Request Log"
-        verbose_name_plural = "Request Logs"
+        # X-Forwarded-For format: "client_ip, proxy1_ip, proxy2_ip"
+        # We want the first IP (client), not the last (our load balancer)
+        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+        if x_forwarded_for:
+            # Split by comma and take first IP (the real client)
+            ip = x_forwarded_for.split(',')[0].strip()
+            if ip:
+                return ip
+        
+        # Single IP set by nginx or other reverse proxy
+        x_real_ip = request.META.get('HTTP_X_REAL_IP')
+        if x_real_ip:
+            return x_real_ip.strip()
+        
+        # Cloudflare's connecting IP header
+        cf_connecting_ip = request.META.get('HTTP_CF_CONNECTING_IP')
+        if cf_connecting_ip:
+            return cf_connecting_ip.strip()
+        
+        # Fallback to direct connection IP
+        # This might be load balancer IP in production
+        return request.META.get('REMOTE_ADDR')
     
-    def __str__(self):
-        """String representation shown in Django admin"""
-        return f"{self.ip_address} requested {self.path} at {self.timestamp}"
-
-class BlockedIP(models.Model):
-    """
-    Stores IP addresses that should be blocked from accessing the site.
-    Middleware checks this table before processing requests.
-    """
-    # unique=True prevents duplicate blocked IPs
-    ip_address = models.GenericIPAddressField(
-        unique=True,
-        help_text="IP address to block"
-    )
+    def process_request(self, request):
+        """
+        Called for every incoming request BEFORE view processing.
+        
+        This is where we:
+        1. Get the real client IP
+        2. Check if IP is blocked
+        3. Log the request details
+        
+        If this method returns HttpResponse, Django skips the view entirely
+        and returns our response (used for blocking).
+        """
+        
+        # Extract real client IP using our helper method
+        client_ip = self.get_client_ip(request)
+        
+        # Store IP in request object so views can access it later
+        # This avoids recalculating IP in views
+        request.client_ip = client_ip
+        
+        # Check if this IP is in our blocklist
+        # exists() is more efficient than get() when we only need yes/no
+        if BlockedIP.objects.filter(ip_address=client_ip).exists():
+            # Return 403 Forbidden immediately, don't process the request
+            # This prevents blocked users from accessing any part of the site
+            return HttpResponseForbidden(
+                "<h1>Access Denied</h1><p>Your IP address has been blocked.</p>"
+            )
+        
+        # Log this request to database for monitoring and analysis
+        try:
+            RequestLog.objects.create(
+                ip_address=client_ip,
+                path=request.get_full_path(),  # Include query parameters like ?page=2
+                # timestamp automatically set by model default
+            )
+        except Exception as e:
+            # Don't break the website if logging fails
+            # In production, you'd want to log this error somewhere
+            # For now, silently continue serving the request
+            pass
+        
+        # Return None means "continue processing normally"
+        # Request will proceed to next middleware and eventually the view
+        return None
     
-    # auto_now_add=True sets timestamp only when record is created
-    created_at = models.DateTimeField(
-        auto_now_add=True,
-        help_text="When this IP was blocked"
-    )
-    
-    # Optional reason for blocking (manual blocks, automated detection, etc.)
-    reason = models.CharField(
-        max_length=255,
-        blank=True,
-        help_text="Why this IP was blocked"
-    )
-    
-    class Meta:
-        ordering = ['-created_at']
-        verbose_name = "Blocked IP"
-        verbose_name_plural = "Blocked IPs"
-    
-    def __str__(self):
-        return f"Blocked: {self.ip_address}"
-
-class SuspiciousIP(models.Model):
-    """
-    Stores IPs flagged by anomaly detection system.
-    These are not blocked automatically, but flagged for review.
-    """
-    ip_address = models.GenericIPAddressField(
-        help_text="IP address showing suspicious behavior"
-    )
-    
-    # Why this IP was flagged (too many requests, admin access, etc.)
-    reason = models.CharField(
-        max_length=255,
-        help_text="Specific suspicious behavior detected"
-    )
-    
-    # When the suspicious activity was detected
-    detected_at = models.DateTimeField(
-        auto_now_add=True,
-        help_text="When suspicious activity was detected"
-    )
-    
-    class Meta:
-        ordering = ['-detected_at']
-        verbose_name = "Suspicious IP"
-        verbose_name_plural = "Suspicious IPs"
-    
-    def __str__(self):
-        return f"Suspicious: {self.ip_address} - {self.reason}"
+    def process_response(self, request, response):
+        """
+        Called for every outgoing response AFTER view processing.
+        
+        This runs after the view has processed and created a response.
+        We could add security headers, modify response based on IP, etc.
+        
+        For basic IP tracking, we don't need this method, but it's here
+        for future enhancements.
+        """
+        
+        # Could add security headers based on IP analysis:
+        # if hasattr(request, 'client_ip') and is_suspicious_ip(request.client_ip):
+        #     response['X-Security-Level'] = 'high'
+        
+        return response
