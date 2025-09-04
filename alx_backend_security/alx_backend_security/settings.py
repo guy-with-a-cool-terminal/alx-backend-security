@@ -122,3 +122,14 @@ IP_GEOLOCATION_SETTINGS = {
     'ENABLE_RESPONSE_HOOK': False,
     'ENABLE_COOKIE': False, 
 }
+# Rate limiting configuration
+RATELIMIT_ENABLE = True
+RATELIMIT_USE_CACHE = 'default'
+
+# Cache configuration
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'unique-snowflake',
+    }
+}
