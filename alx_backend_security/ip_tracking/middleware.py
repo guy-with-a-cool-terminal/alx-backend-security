@@ -1,5 +1,6 @@
 from django.http import HttpResponseForbidden
 from django.utils.deprecation import MiddlewareMixin
+from django.core.cache import cache
 from .models import RequestLog, BlockedIP
 
 class IPTrackingMiddleware(MiddlewareMixin):
@@ -42,6 +43,67 @@ class IPTrackingMiddleware(MiddlewareMixin):
         # direct connection IP,might be a load balancer
         return request.META.get('REMOTE_ADDR')
     
+    def get_geolocation_data(self,client_ip,request):
+        """
+        Get geolocation data for the given IP address.
+        caches for 24 hrs.
+        
+        Args:
+            client_ip (str): The client's IP address
+            request: Django request object (contains geolocation data)
+            
+        Returns:
+            dict: Contains country, country_code, and city data
+        """
+        cache_key = f"geo_data_{client_ip}"
+        # first try getting cached data
+        cached_geo_data = cache.get(cache_key)
+        if cached_geo_data:
+            print(f"Using cached geolocation data for IP: {client_ip}") 
+            return cached_geo_data
+        # cache miss
+        print(f"Fetching fresh geolocation data for IP: {client_ip}")
+        
+        # Initialize default values
+        country = ''
+        country_code = ''
+        city = ''
+        
+        # Check if geolocation data is available from django-ip-geolocation middleware
+        if hasattr(request, 'geolocation') and request.geolocation:
+            try:
+                # Extract geolocation data from the request
+                country = getattr(request.geolocation, 'country', '') or ''
+                city = getattr(request.geolocation, 'city', '') or ''
+                
+                # Handle country format - docs say it might be a dictionary
+                if hasattr(country, 'get'):
+                    # Country is a dictionary with 'code' and 'name' keys
+                    country_code = country.get('code', '') or ''
+                    country = country.get('name', '') or ''
+                
+                # Prepare the data to be cached
+                geo_data = {
+                    'country': str(country)[:100],        
+                    'country_code': str(country_code)[:2],
+                    'city': str(city)[:100]
+                }
+                
+                # Store in cache for 24 hours(86400 secs)
+                cache.set(cache_key, geo_data, 86400)
+                
+                return geo_data
+                
+            except Exception as e:
+                # If geolocation extraction fails, return empty data
+                print(f"Error extracting geolocation data: {e}")
+                pass
+        return {
+            'country': '',
+            'country_code': '',
+            'city': ''
+        }
+    
     def process_request(self,request):
         """ 
         this will be called for every incoming request
@@ -61,20 +123,9 @@ class IPTrackingMiddleware(MiddlewareMixin):
             return HttpResponseForbidden(
                 "<h1>Access Denied</h1><p>Touch Grass.</p>"
             )
-        
-        # get geolocation data
-        country = ''
-        country_code = ''
-        city = ''
-        if hasattr(request,'geolocation') and request.geolocation:
-            # extract geolocation data
-            country = getattr(request.geolocation, 'country', '') or ''
-            city = getattr(request.geolocation, 'city', '') or ''
             
-            # handle country format docs say it might be a dictionary
-            if hasattr(country,'get'):
-                country_code = country.get('code', '') or ''
-                country = country.get('name', '') or ''
+        # Get geolocation data with caching
+        geo_data = self.get_geolocation_data(client_ip, request)
         
         # log request to the database
         try:
