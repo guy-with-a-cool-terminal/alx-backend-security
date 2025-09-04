@@ -22,6 +22,25 @@ class RequestLog(models.Model):
         max_length=500,
         help_text="requested url path"
     )
+    # geolocation data
+    country = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        help_text="Country the IP originates from"
+    )
+    country_code = models.CharField(
+        max_length=2,
+        blank=True,
+        null=True,
+        help_text="Country code (KE, US, GB)"
+    )
+    city = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        help_text="City the IP originates from"
+    )
     
     class Meta:
         # show newest first

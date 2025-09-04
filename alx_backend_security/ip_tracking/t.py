@@ -1,160 +1,80 @@
-# ip_tracking/management/commands/block_ip.py
+# ip_tracking/middleware.py
 
-from django.core.management.base import BaseCommand, CommandError
-from django.core.exceptions import ValidationError
-from ip_tracking.models import BlockedIP
-import ipaddress
+from django.http import HttpResponseForbidden
+from django.utils.deprecation import MiddlewareMixin
+from .models import RequestLog, BlockedIP
 
-class Command(BaseCommand):
+class IPTrackingMiddleware(MiddlewareMixin):
     """
-    Django management command to block/unblock IP addresses.
-    
-    Usage examples:
-    python manage.py block_ip --add 192.168.1.100 --reason "Brute force attack"
-    python manage.py block_ip --remove 192.168.1.100
-    python manage.py block_ip --list
-    python manage.py block_ip --add 203.45.67.89 --reason "Spam bot"
+    Middleware that runs for every HTTP request to:
+    1. Extract the real client IP address
+    2. Check if IP is blocked and reject request if so
+    3. Get geolocation data from django-ip-geolocation middleware
+    4. Log all request details to database
     """
     
-    help = 'Manage blocked IP addresses'
+    def get_client_ip(self, request):
+        """Extract real client IP address handling proxy scenarios."""
+        
+        # X-Forwarded-For format: "client_ip, proxy1_ip, proxy2_ip"
+        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+        if x_forwarded_for:
+            ip = x_forwarded_for.split(',')[0].strip()
+            if ip:
+                return ip
+        
+        # Single IP set by nginx or other reverse proxy
+        x_real_ip = request.META.get('HTTP_X_REAL_IP')
+        if x_real_ip:
+            return x_real_ip.strip()
+        
+        # Cloudflare's connecting IP header
+        cf_connecting_ip = request.META.get('HTTP_CF_CONNECTING_IP')
+        if cf_connecting_ip:
+            return cf_connecting_ip.strip()
+        
+        # Fallback to direct connection IP
+        return request.META.get('REMOTE_ADDR')
     
-    def add_arguments(self, parser):
-        """
-        Define command line arguments this command accepts.
+    def process_request(self, request):
+        """Process every incoming request before view processing."""
         
-        Django's argument parser is based on Python's argparse module.
-        We create mutually exclusive groups so user can't accidentally
-        try to add and remove the same IP in one command.
-        """
+        # Extract real client IP
+        client_ip = self.get_client_ip(request)
+        request.client_ip = client_ip
         
-        # Create mutually exclusive group - user can only choose one action
-        group = parser.add_mutually_exclusive_group(required=True)
+        # Check if this IP is blocked
+        if BlockedIP.objects.filter(ip_address=client_ip).exists():
+            return HttpResponseForbidden(
+                "<h1>Access Denied</h1><p>Your IP address has been blocked.</p>"
+            )
         
-        # Add IP to blocklist
-        group.add_argument(
-            '--add',
-            type=str,
-            help='IP address to block (e.g., 192.168.1.100 or 2001:db8::1)'
-        )
+        # Get geolocation data from django-ip-geolocation middleware
+        country = ''
+        country_code = ''
+        city = ''
         
-        # Remove IP from blocklist
-        group.add_argument(
-            '--remove',
-            type=str,
-            help='IP address to unblock'
-        )
+        if hasattr(request, 'geolocation') and request.geolocation:
+            # Extract all geolocation data
+            country = getattr(request.geolocation, 'country', '') or ''
+            city = getattr(request.geolocation, 'city', '') or ''
+            
+            # Handle country format - might be dict with 'name' and 'code' keys
+            if hasattr(country, 'get'):
+                country_code = country.get('code', '') or ''
+                country = country.get('name', '') or ''
         
-        # List all blocked IPs
-        group.add_argument(
-            '--list',
-            action='store_true',
-            help='List all currently blocked IP addresses'
-        )
-        
-        # Optional reason for blocking (only used with --add)
-        parser.add_argument(
-            '--reason',
-            type=str,
-            default='',
-            help='Reason for blocking this IP (optional)'
-        )
-    
-    def validate_ip_address(self, ip_string):
-        """
-        Validate that provided string is a valid IPv4 or IPv6 address.
-        
-        Using Python's ipaddress module for robust validation.
-        This catches malformed IPs before they hit the database.
-        """
+        # Log this request to database
         try:
-            # This will raise ValueError if IP is invalid
-            ipaddress.ip_address(ip_string)
-            return True
-        except ValueError:
-            return False
-    
-    def handle(self, *args, **options):
-        """
-        Main command logic. Called when user runs the management command.
+            RequestLog.objects.create(
+                ip_address=client_ip,
+                path=request.get_full_path(),
+                country=str(country)[:100],
+                country_code=str(country_code)[:2],
+                city=str(city)[:100],
+            )
+        except Exception:
+            # Don't break site if logging fails
+            pass
         
-        Django calls this method with parsed command line arguments
-        in the 'options' dictionary.
-        """
-        
-        if options['add']:
-            # Block a new IP address
-            ip_to_block = options['add'].strip()
-            reason = options['reason']
-            
-            # Validate IP format before attempting database operations
-            if not self.validate_ip_address(ip_to_block):
-                raise CommandError(f'Invalid IP address format: {ip_to_block}')
-            
-            # Check if IP is already blocked to avoid duplicate entries
-            if BlockedIP.objects.filter(ip_address=ip_to_block).exists():
-                self.stdout.write(
-                    self.style.WARNING(f'IP {ip_to_block} is already blocked')
-                )
-                return
-            
-            # Create new blocked IP entry
-            try:
-                blocked_ip = BlockedIP.objects.create(
-                    ip_address=ip_to_block,
-                    reason=reason
-                )
-                
-                self.stdout.write(
-                    self.style.SUCCESS(
-                        f'Successfully blocked IP: {ip_to_block}'
-                        + (f' (Reason: {reason})' if reason else '')
-                    )
-                )
-                
-            except ValidationError as e:
-                raise CommandError(f'Database validation error: {e}')
-        
-        elif options['remove']:
-            # Unblock an IP address
-            ip_to_unblock = options['remove'].strip()
-            
-            # Validate IP format
-            if not self.validate_ip_address(ip_to_unblock):
-                raise CommandError(f'Invalid IP address format: {ip_to_unblock}')
-            
-            # Try to find and delete the blocked IP
-            try:
-                blocked_ip = BlockedIP.objects.get(ip_address=ip_to_unblock)
-                blocked_ip.delete()
-                
-                self.stdout.write(
-                    self.style.SUCCESS(f'Successfully unblocked IP: {ip_to_unblock}')
-                )
-                
-            except BlockedIP.DoesNotExist:
-                self.stdout.write(
-                    self.style.WARNING(f'IP {ip_to_unblock} was not in blocklist')
-                )
-        
-        elif options['list']:
-            # List all currently blocked IPs
-            blocked_ips = BlockedIP.objects.all().order_by('-created_at')
-            
-            if not blocked_ips.exists():
-                self.stdout.write('No IPs are currently blocked.')
-                return
-            
-            self.stdout.write(f'\nCurrently blocked IPs ({blocked_ips.count()}):\n')
-            self.stdout.write('-' * 60)
-            
-            for blocked_ip in blocked_ips:
-                # Format the output nicely
-                blocked_time = blocked_ip.created_at.strftime('%Y-%m-%d %H:%M:%S')
-                reason_text = f' - {blocked_ip.reason}' if blocked_ip.reason else ''
-                
-                self.stdout.write(
-                    f'{blocked_ip.ip_address:15} | {blocked_time}{reason_text}'
-                )
-        
-        # Note: If none of the conditions match, argparse handles the error
-        # because we set required=True on the mutually exclusive group
+        return None

@@ -7,7 +7,8 @@ class IPTrackingMiddleware(MiddlewareMixin):
     this middleware does the following:
         1. Extract the real client IP address
         2. Check if IP is blocked and reject request if so
-        3. Log all request details to database
+        3. Get geolocation data
+        4. Log all request details to database
         
     """
     def get_client_ip(self,request):
@@ -61,11 +62,28 @@ class IPTrackingMiddleware(MiddlewareMixin):
                 "<h1>Access Denied</h1><p>Touch Grass.</p>"
             )
         
+        # get geolocation data
+        country = ''
+        country_code = ''
+        city = ''
+        if hasattr(request,'geolocation') and request.geolocation:
+            # extract geolocation data
+            country = getattr(request.geolocation, 'country', '') or ''
+            city = getattr(request.geolocation, 'city', '') or ''
+            
+            # handle country format docs say it might be a dictionary
+            if hasattr(country,'get'):
+                country_code = country.get('code', '') or ''
+                country = country.get('name', '') or ''
+        
         # log request to the database
         try:
             RequestLog.objects.create(
                 ip_address=client_ip,
                 path=request.get_full_path(),
+                country=str(country)[:100],
+                country_code=str(country_code)[:2],
+                city=str(city)[:100],
             )
         except Exception as e:
             pass
