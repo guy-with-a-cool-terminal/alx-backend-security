@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Access Terminal - IP Security Challenge</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #0c0c0c 0%, #1a1a2e 50%, #16213e 100%);
+            color: #00ff00;
+            font-family: 'Courier New', monospace;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .login-container {
+            background: rgba(0, 0, 0, 0.9);
+            border: 2px solid #00ff00;
+            border-radius: 10px;
+            padding: 40px;
+            width: 100%;
+            max-width: 400px;
+            box-shadow: 0 0 30px rgba(0, 255, 0, 0.3);
+        }
+        
+        .login-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .login-header h1 {
+            color: #00ff00;
+            font-size: 2em;
+            margin-bottom: 10px;
+            text-shadow: 0 0 10px #00ff00;
+            animation: glow 2s ease-in-out infinite alternate;
+        }
+        
+        @keyframes glow {
+            from { text-shadow: 0 0 10px #00ff00; }
+            to { text-shadow: 0 0 20px #00ff00, 0 0 30px #00ff00; }
+        }
+        
+        .terminal-prompt {
+            color: #ff6b6b;
+            margin-bottom: 20px;
+            font-size: 0.9em;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            color: #00ff00;
+            font-size: 0.9em;
+        }
+        
+        .form-group input {
+            width: 100%;
+            padding: 12px;
+            background: rgba(0, 0, 0, 0.8);
+            border: 1px solid #00ff00;
+            border-radius: 5px;
+            color: #00ff00;
+            font-family: 'Courier New', monospace;
+            font-size: 1em;
+            transition: all 0.3s ease;
+        }
+        
+        .form-group input:focus {
+            outline: none;
+            border-color: #ff6b6b;
+            box-shadow: 0 0 10px rgba(255, 107, 107, 0.3);
+        }
+        
+        .form-group input::placeholder {
+            color: #666;
+        }
+        
+        .login-btn {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(45deg, #00ff00, #00cc00);
+            border: none;
+            border-radius: 5px;
+            color: #000;
+            font-family: 'Courier New', monospace;
+            font-size: 1.1em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+        }
+        
+        .login-btn:hover {
+            background: linear-gradient(45deg, #00cc00, #009900);
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.5);
+        }
+        
+        .messages {
+            margin-bottom: 20px;
+        }
+        
+        .message {
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 10px;
+            font-size: 0.9em;
+        }
+        
+        .message.error {
+            background: rgba(255, 107, 107, 0.2);
+            border: 1px solid #ff6b6b;
+            color: #ff6b6b;
+        }
+        
+        .message.success {
+            background: rgba(0, 255, 0, 0.2);
+            border: 1px solid #00ff00;
+            color: #00ff00;
+        }
+        
+        .rate-limit-info {
+            text-align: center;
+            margin-top: 20px;
+            font-size: 0.8em;
+            color: #666;
+        }
+        
+        .ascii-logo {
+            font-size: 8px;
+            line-height: 1;
+            color: #00ff00;
+            opacity: 0.7;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        .challenge-hint {
+            background: rgba(255, 107, 107, 0.1);
+            border-left: 4px solid #ff6b6b;
+            padding: 10px;
+            margin-top: 20px;
+            font-size: 0.85em;
+            border-radius: 0 5px 5px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-header">
+            <div class="ascii-logo">
+<pre>
+ █████╗  ██████╗ ██████╗███████╗███████╗███████╗
+██╔══██╗██╔════╝██╔════╝██╔════╝██╔════╝██╔════╝
+███████║██║     ██║     █████╗  ███████╗███████╗
+██╔══██║██║     ██║     ██╔══╝  ╚════██║╚════██║
+██║  ██║╚██████╗╚██████╗███████╗███████║███████║
+╚═╝  ╚═╝ ╚═════╝ ╚═════╝╚══════╝╚══════╝╚══════╝
+</pre>
+            </div>
+            <h1>🔐 Access Terminal</h1>
+            <div class="terminal-prompt">
+                > Initiating secure connection...<br>
+                > Authentication required to proceed
+            </div>
+        </div>
+        
+        {% if messages %}
+            <div class="messages">
+                {% for message in messages %}
+                    <div class="message {{ message.tags }}">
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            </div>
+        {% endif %}
+        
+        <form method="post">
+            {% csrf_token %}
+            <div class="form-group">
+                <label for="username">Username:</label>
+                <input type="text" id="username" name="username" placeholder="Enter access code..." required>
+            </div>
+            
+            <div class="form-group">
+                <label for="password">Password:</label>
+                <input type="password" id="password" name="password" placeholder="Enter security key..." required>
+            </div>
+            
+            <button type="submit" class="login-btn">
+                Initialize Connection
+            </button>
+        </form>
+        
+        <div class="challenge-hint">
+            <strong>🎯 Challenge Hint:</strong> Standard Django admin credentials might work... or maybe there's a test account somewhere in the system.
+        </div>
+        
+        <div class="rate-limit-info">
+            Rate Limited: {{ rate_limit_info }}<br>
+            <span style="color: #ff6b6b;">⚠️ Excessive failed attempts will be logged and traced</span>
+        </div>
+    </div>
+    
+    <script>
+        // Add some cyberpunk effects
+        document.addEventListener('DOMContentLoaded', function() {
+            const inputs = document.querySelectorAll('input');
+            
+            inputs.forEach(input => {
+                input.addEventListener('keydown', function(e) {
+                    // Add typing effect
+                    if (Math.random() > 0.95) {
+                        setTimeout(() => {
+                            this.style.boxShadow = '0 0 5px rgba(0, 255, 0, 0.5)';
+                            setTimeout(() => {
+                                this.style.boxShadow = '';
+                            }, 100);
+                        }, 50);
+                    }
+                });
+            });
+            
+            // Console hint
+            console.log('%c🔐 Access Terminal', 'color: #00ff00; font-size: 16px; font-weight: bold;');
+            console.log('%cHint: Try common test credentials or check if there\'s a superuser account', 'color: #ff6b6b;');
+        });
+    </script>
+</body>
+</html>

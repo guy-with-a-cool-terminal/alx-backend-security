@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }} - IP Security Challenge</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #0c0c0c 0%, #1a1a2e 50%, #16213e 100%);
+            color: #00ff00;
+            font-family: 'Courier New', monospace;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+        
+        .matrix-bg {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            opacity: 0.1;
+            z-index: -1;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            position: relative;
+            z-index: 1;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            padding: 20px;
+            border: 2px solid #00ff00;
+            border-radius: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.3);
+        }
+        
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 0 0 10px #00ff00;
+            animation: glow 2s ease-in-out infinite alternate;
+        }
+        
+        @keyframes glow {
+            from { text-shadow: 0 0 10px #00ff00, 0 0 20px #00ff00; }
+            to { text-shadow: 0 0 20px #00ff00, 0 0 30px #00ff00; }
+        }
+        
+        .terminal {
+            background: rgba(0, 0, 0, 0.9);
+            border: 2px solid #00ff00;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            box-shadow: 0 0 15px rgba(0, 255, 0, 0.2);
+        }
+        
+        .terminal-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+            border-bottom: 1px solid #00ff00;
+            padding-bottom: 10px;
+        }
+        
+        .terminal-dots {
+            display: flex;
+            gap: 8px;
+            margin-right: 15px;
+        }
+        
+        .dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+        
+        .dot.red { background: #ff5f56; }
+        .dot.yellow { background: #ffbd2e; }
+        .dot.green { background: #27ca3f; }
+        
+        .terminal-title {
+            color: #00ff00;
+            font-weight: bold;
+        }
+        
+        .welcome-msg {
+            font-size: 1.2em;
+            line-height: 1.6;
+            margin-bottom: 20px;
+        }
+        
+        .challenge-info {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin: 30px 0;
+        }
+        
+        .info-card {
+            background: rgba(0, 0, 0, 0.8);
+            border: 1px solid #00ff00;
+            border-radius: 8px;
+            padding: 20px;
+            transition: all 0.3s ease;
+        }
+        
+        .info-card:hover {
+            border-color: #ff6b6b;
+            box-shadow: 0 0 15px rgba(255, 107, 107, 0.3);
+        }
+        
+        .info-card h3 {
+            color: #ff6b6b;
+            margin-bottom: 10px;
+            font-size: 1.3em;
+        }
+        
+        .clue {
+            background: rgba(255, 107, 107, 0.1);
+            border-left: 4px solid #ff6b6b;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 0 8px 8px 0;
+        }
+        
+        .clue-title {
+            color: #ff6b6b;
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 30px 0;
+        }
+        
+        .stat-item {
+            background: rgba(0, 0, 0, 0.6);
+            border: 1px solid #00ff00;
+            border-radius: 8px;
+            padding: 15px;
+            text-align: center;
+            transition: transform 0.3s ease;
+        }
+        
+        .stat-item:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 5px 15px rgba(0, 255, 0, 0.3);
+        }
+        
+        .stat-value {
+            font-size: 2em;
+            font-weight: bold;
+            color: #ff6b6b;
+            display: block;
+        }
+        
+        .stat-label {
+            color: #00ff00;
+            font-size: 0.9em;
+            margin-top: 5px;
+        }
+        
+        .footer {
+            text-align: center;
+            margin-top: 40px;
+            padding: 20px;
+            border-top: 1px solid #00ff00;
+            color: #666;
+        }
+        
+        .ascii-art {
+            font-size: 10px;
+            line-height: 1;
+            color: #00ff00;
+            opacity: 0.7;
+            margin: 20px 0;
+            text-align: center;
+        }
+        
+        .hidden-message {
+            color: transparent;
+            user-select: none;
+        }
+        
+        .blink {
+            animation: blink 1s linear infinite;
+        }
+        
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0; }
+        }
+        
+        @media (max-width: 768px) {
+            .header h1 { font-size: 1.8em; }
+            .challenge-info { grid-template-columns: 1fr; }
+            .stats-grid { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+        }
+    </style>
+</head>
+<body>
+    <div class="matrix-bg"></div>
+    
+    <div class="container">
+        <div class="header">
+            <h1>🔐 IP Security Challenge 🔐</h1>
+            <p>Welcome to the Digital Fortress</p>
+            <p class="hidden-message"><!-- Flag: CTF{1p_7r4ck1ng_m4573r} --></p>
+        </div>
+        
+        <div class="terminal">
+            <div class="terminal-header">
+                <div class="terminal-dots">
+                    <div class="dot red"></div>
+                    <div class="dot yellow"></div>
+                    <div class="dot green"></div>
+                </div>
+                <div class="terminal-title">security@ip-tracker:~$</div>
+            </div>
+            
+            <div class="welcome-msg">
+                <p>> Initializing IP Security Challenge...</p>
+                <p>> Authentication: <span style="color: #00ff00;">SUCCESSFUL</span></p>
+                <p>> User: <strong>{{ user.username|default:"anonymous" }}</strong></p>
+                <p>> Your IP: <strong>{{ client_ip }}</strong></p>
+                <p>> Challenge Level: <strong style="color: #ff6b6b;">INTERMEDIATE</strong></p>
+                <p>> Status: <span class="blink">ACTIVE</span></p>
+            </div>
+        </div>
+        
+        <div class="clue">
+            <div class="clue-title">🎯 CHALLENGE BRIEFING</div>
+            <p>Welcome, hacker. You've infiltrated our IP tracking system. Your mission: uncover the secrets hidden within the network traffic patterns. Each endpoint you explore may reveal crucial intelligence.</p>
+        </div>
+        
+        <div class="challenge-info">
+            <div class="info-card">
+                <h3>📊 System Analytics</h3>
+                <p>Analyze network patterns and geolocation data to identify suspicious activities. The truth lies in the data streams.</p>
+                <p><strong>Next Clue:</strong> Check the API endpoints for hidden parameters.</p>
+            </div>
+            
+            <div class="info-card">
+                <h3>🚨 Security Monitoring</h3>
+                <p>Our advanced rate limiting protects against attacks. But can you find the bypass? Some paths are more protected than others.</p>
+                <p><strong>Hint:</strong> Not all requests are created equal.</p>
+            </div>
+            
+            <div class="info-card">
+                <h3>🌍 Geolocation Intel</h3>
+                <p>IP addresses tell stories. Location data reveals patterns. Cache systems hide secrets. What information is being stored about you?</p>
+                <p><strong>Mission:</strong> Uncover the cached intelligence.</p>
+            </div>
+            
+            <div class="info-card">
+                <h3>🔍 Anomaly Detection</h3>
+                <p>AI systems monitor for threats 24/7. Suspicious patterns trigger alerts. Can you fly under the radar or become the threat?</p>
+                <p><strong>Challenge:</strong> Trigger the detection system.</p>
+            </div>
+        </div>
+        
+        <div class="terminal">
+            <div class="terminal-header">
+                <div class="terminal-dots">
+                    <div class="dot red"></div>
+                    <div class="dot yellow"></div>
+                    <div class="dot green"></div>
+                </div>
+                <div class="terminal-title">stats@monitoring:~$</div>
+            </div>
+            
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <span class="stat-value">{{ stats.total_requests|default:"???" }}</span>
+                    <div class="stat-label">Total Requests</div>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-value">{{ stats.unique_ips|default:"???" }}</span>
+                    <div class="stat-label">Unique IPs</div>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-value">{{ stats.blocked_ips|default:"???" }}</span>
+                    <div class="stat-label">Blocked IPs</div>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-value">{{ stats.countries|default:"???" }}</span>
+                    <div class="stat-label">Countries</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="clue">
+            <div class="clue-title">🗺️ EXPLORATION TARGETS</div>
+            <p><strong>Available Endpoints:</strong></p>
+            <ul style="margin-left: 20px; margin-top: 10px;">
+                <li>/api/ip-info/ - <span style="color: #ffbd2e;">Public Intelligence</span></li>
+                <li>/admin/ - <span style="color: #ff5f56;">Restricted Access</span></li>
+                <li>/api/report-suspicious/ - <span style="color: #ff6b6b;">Reporting System</span></li>
+                <li>/health/ - <span style="color: #27ca3f;">System Status</span></li>
+            </ul>
+        </div>
+        
+        <div class="ascii-art">
+<pre>
+    ██╗██████╗     ████████╗██████╗  █████╗  ██████╗██╗  ██╗███████╗██████╗ 
+    ██║██╔══██╗    ╚══██╔══╝██╔══██╗██╔══██╗██╔════╝██║ ██╔╝██╔════╝██╔══██╗
+    ██║██████╔╝       ██║   ██████╔╝███████║██║     █████╔╝ █████╗  ██████╔╝
+    ██║██╔═══╝        ██║   ██╔══██╗██╔══██║██║     ██╔═██╗ ██╔══╝  ██╔══██╗
+    ██║██║            ██║   ██║  ██║██║  ██║╚██████╗██║  ██╗███████╗██║  ██║
+    ╚═╝╚═╝            ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝
+</pre>
+        </div>
+        
+        <div class="footer">
+            <p>Rate Limited: {{ rate_limit }} | Session Active | Remember: Every request is logged 👁️</p>
+            <p style="margin-top: 10px; font-size: 0.8em;">
+                <span style="color: #ff6b6b;">WARNING:</span> Unauthorized access attempts will be traced and reported.
+            </p>
+        </div>
+    </div>
+    
+    <script>
+        // Matrix rain effect
+        function createMatrixRain() {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            canvas.className = 'matrix-bg';
+            document.querySelector('.matrix-bg').appendChild(canvas);
+            
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            
+            const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ123456789@#$%^&*()';
+            const fontSize = 10;
+            const columns = canvas.width / fontSize;
+            const drops = Array(Math.floor(columns)).fill(1);
+            
+            function draw() {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                ctx.fillStyle = '#00ff00';
+                ctx.font = fontSize + 'px monospace';
+                
+                for (let i = 0; i < drops.length; i++) {
+                    const text = letters[Math.floor(Math.random() * letters.length)];
+                    ctx.fillText(text, i * fontSize, drops[i] * fontSize);
+                    
+                    if (drops[i] * fontSize > canvas.height && Math.random() > 0.975) {
+                        drops[i] = 0;
+                    }
+                    drops[i]++;
+                }
+            }
+            
+            setInterval(draw, 33);
+            
+            window.addEventListener('resize', () => {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+            });
+        }
+        
+        // Initialize effects
+        createMatrixRain();
+        
+        // Console easter egg
+        console.log('%c🔐 IP Security Challenge', 'color: #00ff00; font-size: 20px; font-weight: bold;');
+        console.log('%cLooking for clues? You\'re in the right place...', 'color: #ff6b6b;');
+        console.log('%cTry examining the network requests or page source 👀', 'color: #ffbd2e;');
+    </script>
+</body>
+</html>
