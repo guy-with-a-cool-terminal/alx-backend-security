@@ -6,21 +6,14 @@ from celery.schedules import crontab
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-
-# Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
-
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-)(*(zp0q6e(2b!*#=9w^x4h9jj(jv57-9p)23=xvuu@vi0lxhi'
+SECRET_KEY = config('SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = config('DEBUG', default=False, cast=bool)
 
-ALLOWED_HOSTS = []
-
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='', cast=lambda v: [s.strip() for s in v.split(',') if s.strip()])
 
 # Application definition
-
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -35,6 +28,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',  # Added for static files
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -64,10 +58,7 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'alx_backend_security.wsgi.application'
 
-
 # Database
-# https://docs.djangoproject.com/en/5.2/ref/settings/#databases
-
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
@@ -75,10 +66,7 @@ DATABASES = {
     }
 }
 
-
 # Password validation
-# https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
-
 AUTH_PASSWORD_VALIDATORS = [
     {
         'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
@@ -94,26 +82,18 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-
 # Internationalization
-# https://docs.djangoproject.com/en/5.2/topics/i18n/
-
 LANGUAGE_CODE = 'en-us'
-
 TIME_ZONE = 'UTC'
-
 USE_I18N = True
-
 USE_TZ = True
 
-
 # Static files (CSS, JavaScript, Images)
-# https://docs.djangoproject.com/en/5.2/howto/static-files/
+STATIC_URL = '/static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 
-STATIC_URL = 'static/'
-
-# Default primary key field type
-# https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
+# WhiteNoise configuration for static files
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
@@ -125,26 +105,38 @@ IP_GEOLOCATION_SETTINGS = {
     'ENABLE_RESPONSE_HOOK': False,
     'ENABLE_COOKIE': False, 
 }
+
 # Rate limiting configuration
 RATELIMIT_ENABLE = True
 RATELIMIT_USE_CACHE = 'default'
 
-# Cache configuration
+# Cache configuration - Updated for deployment
 CACHES = {
     'default': {
-        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-        'LOCATION': 'unique-snowflake',
+        'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
+        'LOCATION': 'cache_table',
     }
 }
+# when i configure redis
 
-# Celery broker configuration
+# CELERY_BROKER_URL = 'redis://localhost:6379/0' 
+# CELERY_RESULT_BACKEND = 'redis://localhost:6379/0' 
 
-CELERY_BROKER_URL = 'redis://localhost:6379/0' 
-CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'  
+# Celery configuration - Using filesystem as broker instead of Redis
+CELERY_BROKER_URL = f'filesystem://{BASE_DIR / "celery_broker"}'
+CELERY_RESULT_BACKEND = f'file://{BASE_DIR / "celery_results"}'
 
+# Filesystem broker transport options
+CELERY_BROKER_TRANSPORT_OPTIONS = {
+    'data_folder_in': BASE_DIR / 'celery_broker' / 'data_in',
+    'data_folder_out': BASE_DIR / 'celery_broker' / 'data_out',
+    'data_folder_processed': BASE_DIR / 'celery_broker' / 'processed',
+}
 
-# Ensure directories exist
-os.makedirs(BASE_DIR / 'celery_broker', exist_ok=True)
+# Ensure directories exist for file-based Celery
+os.makedirs(BASE_DIR / 'celery_broker' / 'data_in', exist_ok=True)
+os.makedirs(BASE_DIR / 'celery_broker' / 'data_out', exist_ok=True)
+os.makedirs(BASE_DIR / 'celery_broker' / 'processed', exist_ok=True)
 os.makedirs(BASE_DIR / 'celery_results', exist_ok=True)
 
 # Celery task configuration
@@ -168,7 +160,7 @@ CELERY_BEAT_SCHEDULE = {
     },
 }
 
-# Logging configuration for Celery tasks
+# Logging configuration
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
@@ -176,7 +168,7 @@ LOGGING = {
         'file': {
             'level': 'INFO',
             'class': 'logging.FileHandler',
-            'filename': 'celery_tasks.log',
+            'filename': BASE_DIR / 'logs' / 'celery_tasks.log',
         },
         'console': {
             'level': 'INFO',
@@ -191,3 +183,15 @@ LOGGING = {
         },
     },
 }
+
+# Security settings for production
+if not DEBUG:
+    SECURE_SSL_REDIRECT = True
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    SECURE_HSTS_SECONDS = 31536000
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    SECURE_BROWSER_XSS_FILTER = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
