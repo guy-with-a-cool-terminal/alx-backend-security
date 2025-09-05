@@ -99,7 +99,6 @@ def login_view(request):
             return ratelimit_handler(request, None)
 
 
-@login_required
 @ratelimit(key='ip', rate=custom_ratelimit_by_auth, method='GET', block=True)
 def dashboard_view(request):
     """
