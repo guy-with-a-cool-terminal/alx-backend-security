@@ -1,4 +1,0 @@
-IPDATA_API_KEY=70182d50201b51a54c24978f8e91ca0ca5cde1b295b6aaee596f7677
-SECRET_KEY='django-insecure-)(*(zp0q6e(2b!*#=9w^x4h9jj(jv57-9p)23=xvuu@vi0lxhi'
-DEBUG=True
-ALLOWED_HOSTS=youknowme.pythonanywhere.com,127.0.0.1
