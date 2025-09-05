@@ -8,3 +8,4 @@ whitenoise
 django-ip-geolocation
 django-ratelimit
 requests
+drf-spectacular

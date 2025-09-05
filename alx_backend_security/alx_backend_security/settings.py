@@ -24,6 +24,7 @@ INSTALLED_APPS = [
     'ip_tracking',
     'rest_framework',
     'django_celery_results',
+    'drf_spectacular',
 ]
 
 MIDDLEWARE = [
@@ -182,6 +183,15 @@ LOGGING = {
             'propagate': True,
         },
     },
+}
+REST_FRAMEWORK = {
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+}
+
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'IP Tracking API',
+    'DESCRIPTION': 'API for IP tracking and security monitoring',
+    'VERSION': '1.0.5',
 }
 
 # Security settings for production

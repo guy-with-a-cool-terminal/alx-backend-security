@@ -8,6 +8,9 @@ from django_ratelimit.decorators import ratelimit
 from django_ratelimit.exceptions import Ratelimited
 from django.contrib import messages
 from django.urls import reverse
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from rest_framework import status
 import json
 from .models import RequestLog, BlockedIP
 
@@ -175,11 +178,15 @@ def admin_panel_view(request):
         return ratelimit_handler(request, None)
 
 
+@api_view(['GET'])
 @ratelimit(key='ip', rate='20/m', method='GET', block=True)
 def api_ip_info(request):
     """
     Public API endpoint for IP information.
     Rate limit: 20 requests per minute.
+    
+    Returns IP address information including geolocation data,
+    request statistics, and rate limiting information.
     """
     try:
         client_ip = getattr(request, 'client_ip', request.META.get('REMOTE_ADDR'))
@@ -201,53 +208,59 @@ def api_ip_info(request):
             }
         }
         
-        return JsonResponse(response_data)
+        return Response(response_data, status=status.HTTP_200_OK)
         
     except Ratelimited:
-        return JsonResponse({
+        return Response({
             'error': 'Rate limit exceeded',
             'retry_after': 60
-        }, status=429)
+        }, status=status.HTTP_429_TOO_MANY_REQUESTS)
 
 
+@api_view(['POST'])
 @ratelimit(key='ip', rate='10/m', method='POST', block=True)
 @csrf_exempt
-@require_http_methods(["POST"])
 def api_report_suspicious(request):
     """
     API endpoint for reporting suspicious activity.
     Rate limit: 10 reports per minute.
+    
+    Expected JSON payload:
+    {
+        "ip_address": "192.168.1.1",
+        "reason": "Multiple failed login attempts",
+        "evidence": {"attempts": 5, "timespan": "5 minutes"}
+    }
     """
     try:
-        if request.content_type != 'application/json':
-            return JsonResponse({'error': 'Content-Type must be application/json'}, status=400)
-        
-        data = json.loads(request.body)
+        data = request.data if hasattr(request, 'data') else json.loads(request.body)
         suspicious_ip = data.get('ip_address')
         reason = data.get('reason')
         evidence = data.get('evidence', {})
         
         if not suspicious_ip or not reason:
-            return JsonResponse({
+            return Response({
                 'error': 'ip_address and reason are required'
-            }, status=400)
+            }, status=status.HTTP_400_BAD_REQUEST)
         
         # TODO: Implement suspicious activity reporting
         # This would integrate with the anomaly detection system
         
-        return JsonResponse({
+        return Response({
             'success': True,
             'message': 'Suspicious activity report received',
             'report_id': None,  # TODO: Generate unique report ID
-        })
+        }, status=status.HTTP_201_CREATED)
         
     except json.JSONDecodeError:
-        return JsonResponse({'error': 'Invalid JSON data'}, status=400)
+        return Response({
+            'error': 'Invalid JSON data'
+        }, status=status.HTTP_400_BAD_REQUEST)
     except Ratelimited:
-        return JsonResponse({
+        return Response({
             'error': 'Rate limit exceeded',
             'retry_after': 60
-        }, status=429)
+        }, status=status.HTTP_429_TOO_MANY_REQUESTS)
 
 
 def logout_view(request):
@@ -262,13 +275,17 @@ def logout_view(request):
     return redirect('ip_tracking:login')
 
 
+@api_view(['GET'])
 def health_check(request):
     """
     Health check endpoint for load balancers and monitoring.
     No rate limiting to avoid interfering with health checks.
+    
+    Returns system health status including database, cache,
+    and external service connectivity.
     """
     # TODO: Add actual health checks
-    return JsonResponse({
+    return Response({
         'status': 'healthy',
         'timestamp': None,  # TODO: timezone.now().isoformat()
         'services': {
@@ -276,4 +293,4 @@ def health_check(request):
             'cache': 'ok',          # TODO: Check cache connection
             'geolocation': 'ok',    # TODO: Check geolocation service
         }
-    })
+    }, status=status.HTTP_200_OK)
